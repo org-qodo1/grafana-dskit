@@ -61,6 +61,10 @@ type LifecyclerConfig struct {
 	// If set, specifies the TokenGenerator implementation that will be used for generating tokens.
 	// Default value is nil, which means that RandomTokenGenerator is used.
 	RingTokenGenerator TokenGenerator `yaml:"-"`
+
+	// InitialState is the state the lifecycler reports before it has joined the ring.
+	// Callers that drive the join sequence themselves can use it to start from a different state.
+	InitialState InstanceState `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -235,7 +239,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		clearTokensOnShutdown: atomic.NewBool(false),
 		Zone:                  cfg.Zone,
 		actorChan:             make(chan func()),
-		state:                 PENDING,
+		state:                 cfg.InitialState,
 		tokenGenerator:        tokenGenerator,
 		canJoinTimeout:        5 * time.Minute,
 		lifecyclerMetrics:     NewLifecyclerMetrics(ringName, reg),
