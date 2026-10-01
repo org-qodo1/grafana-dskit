@@ -164,11 +164,12 @@ var (
 	// WriteNoExtend is like Write, but with no replicaset extension.
 	WriteNoExtend = NewOp([]InstanceState{ACTIVE}, nil)
 
-	// Read operation that extends the replica set if an instance is not ACTIVE or LEAVING
-	Read = NewOp([]InstanceState{ACTIVE, PENDING, LEAVING}, func(s InstanceState) bool {
+	// Read operation that extends the replica set if an instance is not ACTIVE.
+	Read = NewOp([]InstanceState{ACTIVE, PENDING}, func(s InstanceState) bool {
 		// To match Write with extended replica set we have to also increase the
-		// size of the replica set for Read, but we can read from LEAVING ingesters.
-		return s != ACTIVE && s != LEAVING
+		// size of the replica set for Read. Instances that are shutting down are
+		// skipped and replaced by the next instance in the ring.
+		return s != ACTIVE
 	})
 
 	// Reporting is a special value for inquiring about health.
