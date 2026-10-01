@@ -1666,9 +1666,10 @@ func (m *KV) LocalState(_ bool) []byte {
 	defer m.storeMu.Unlock()
 
 	// For each Key/Value pair in our store, we write
-	// [4-bytes length of marshalled KV pair] [marshalled KV pair]
+	// [uvarint length of marshalled KV pair] [marshalled KV pair]
 
 	buf := bytes.Buffer{}
+	lenBuf := make([]byte, binary.MaxVarintLen64)
 	sent := time.Now()
 
 	kvPair := KeyValuePair{}
@@ -1702,16 +1703,8 @@ func (m *KV) LocalState(_ bool) []byte {
 			continue
 		}
 
-		if uint(len(ser)) > math.MaxUint32 {
-			level.Error(m.logger).Log("msg", "value too long", "key", key, "value_length", len(encoded))
-			continue
-		}
-
-		err = binary.Write(&buf, binary.BigEndian, uint32(len(ser)))
-		if err != nil {
-			level.Error(m.logger).Log("msg", "failed to write uint32 to buffer?", "err", err)
-			continue
-		}
+		n := binary.PutUvarint(lenBuf, uint64(len(ser)))
+		buf.Write(lenBuf[:n])
 		buf.Write(ser)
 
 		m.addSentMessage(Message{
@@ -1744,17 +1737,16 @@ func (m *KV) MergeRemoteState(data []byte, _ bool) {
 	kvPair := KeyValuePair{}
 
 	var err error
-	// Data contains individual KV pairs (encoded as protobuf messages), each prefixed with 4 bytes length of KV pair:
-	// [4-bytes length of marshalled KV pair] [marshalled KV pair] [4-bytes length] [KV pair]...
+	// Data contains individual KV pairs (encoded as protobuf messages), each prefixed with uvarint length of KV pair:
+	// [uvarint length of marshalled KV pair] [marshalled KV pair] [uvarint length] [KV pair]...
 	for len(data) > 0 {
-		if len(data) < 4 {
+		kvPairLength, n := binary.Uvarint(data)
+		if n <= 0 {
 			err = fmt.Errorf("not enough data left for another KV Pair: %d", len(data))
 			break
 		}
 
-		kvPairLength := binary.BigEndian.Uint32(data)
-
-		data = data[4:]
+		data = data[n:]
 
 		if len(data) < int(kvPairLength) {
 			err = fmt.Errorf("not enough data left for next KV Pair, expected %d, remaining %d bytes", kvPairLength, len(data))
