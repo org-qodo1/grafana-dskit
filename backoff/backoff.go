@@ -12,15 +12,18 @@ import (
 type Config struct {
 	MinBackoff time.Duration `yaml:"min_period" category:"advanced"`  // start backoff at this level
 	MaxBackoff time.Duration `yaml:"max_period" category:"advanced"`  // increase exponentially to this level
-	MaxRetries int           `yaml:"max_retries" category:"advanced"` // give up after this many; zero means infinite retries
+	MaxRetries int           `yaml:"max_retries" category:"advanced"` // give up after this many; negative means infinite retries
 }
 
 // RegisterFlagsWithPrefix for Config.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.MinBackoff, prefix+".backoff-min-period", 100*time.Millisecond, "Minimum delay when backing off.")
 	f.DurationVar(&cfg.MaxBackoff, prefix+".backoff-max-period", 10*time.Second, "Maximum delay when backing off.")
-	f.IntVar(&cfg.MaxRetries, prefix+".backoff-retries", 10, "Number of times to backoff and retry before failing.")
+	f.IntVar(&cfg.MaxRetries, prefix+".backoff-retries", DefaultMaxRetries, "Number of times to backoff and retry before failing. Negative value means retry indefinitely.")
 }
+
+// DefaultMaxRetries is the number of retries used when Config.MaxRetries is not set.
+const DefaultMaxRetries = 10
 
 // Backoff implements exponential backoff with randomized wait times
 type Backoff struct {
@@ -33,6 +36,9 @@ type Backoff struct {
 
 // New creates a Backoff object. Pass a Context that can also terminate the operation.
 func New(ctx context.Context, cfg Config) *Backoff {
+	if cfg.MaxRetries == 0 {
+		cfg.MaxRetries = DefaultMaxRetries
+	}
 	return &Backoff{
 		cfg:          cfg,
 		ctx:          ctx,
@@ -51,7 +57,7 @@ func (b *Backoff) Reset() {
 // Ongoing returns true if caller should keep going
 func (b *Backoff) Ongoing() bool {
 	// Stop if Context has errored or max retry count is exceeded
-	return b.ctx.Err() == nil && (b.cfg.MaxRetries == 0 || b.numRetries < b.cfg.MaxRetries)
+	return b.ctx.Err() == nil && (b.cfg.MaxRetries < 0 || b.numRetries < b.cfg.MaxRetries)
 }
 
 // Err returns the reason for terminating the backoff, or nil if it didn't terminate.
@@ -59,7 +65,7 @@ func (b *Backoff) Err() error {
 	if b.ctx.Err() != nil {
 		return b.ctx.Err()
 	}
-	if b.cfg.MaxRetries != 0 && b.numRetries >= b.cfg.MaxRetries {
+	if b.cfg.MaxRetries >= 0 && b.numRetries >= b.cfg.MaxRetries {
 		return fmt.Errorf("terminated after %d retries", b.numRetries)
 	}
 	return nil
