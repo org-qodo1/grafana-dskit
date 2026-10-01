@@ -575,13 +575,13 @@ func (r *ActivePartitionBatchRing) Get(key uint32, _ Operation, bufInstances []I
 		bufInstances = bufInstances[:1]
 	}
 
-	partitionIDString := strconv.Itoa(int(partitionID))
+	partitionName := partitionInstanceName(partitionID)
 
 	bufInstances[0] = InstanceDesc{
-		Addr:      partitionIDString,
+		Addr:      partitionName,
 		Timestamp: 0,
 		State:     ACTIVE,
-		Id:        partitionIDString,
+		Id:        partitionName,
 	}
 
 	return ReplicationSet{
@@ -590,6 +590,12 @@ func (r *ActivePartitionBatchRing) Get(key uint32, _ Operation, bufInstances []I
 		MaxUnavailableZones:  0,
 		ZoneAwarenessEnabled: false,
 	}, nil
+}
+
+// partitionInstanceName returns the name used to identify a partition in batch
+// operations, so that errors and logs clearly refer to a partition.
+func partitionInstanceName(partitionID int32) string {
+	return "partition-" + strconv.Itoa(int(partitionID))
 }
 
 // PartitionKeys holds a partition ID and the indexes of keys assigned to it.
